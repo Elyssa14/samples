@@ -31,11 +31,12 @@ and concat(year, '-', month, '-', day) >= [[inc_start_date]]
 and concat(year, '-', month, '-', day) < [[inc_end_date]]
 and element_at(properties, 'lastUpfront_ETAInsecond') is not null
 and element_at(properties, 'lastUpfront_PickupPoint') is not null
-and properties['operation.name'] = 'upfront_eta') t1
+and properties['operation.name'] = 'upfront_eta'
+) t1
 where rank = 1) ueta
 
- inner join (select id, taxi_type_simple as taxi_type from public.taxi_types_v where end_at = '2100-01-01 00:00:00') taxi
-  on ueta.vehicle_used_id = taxi.id
+inner join (select id, taxi_type_simple as taxi_type from zz.taxi_types_v where end_at = '2100-01-01 00:00:00') taxi
+on ueta.vehicle_used_id = taxi.id
 
-  inner join (select id, name as city, country_code as country from public.cities) c
-  on ueta.city_id = c.id
+inner join (select id, name as city, country_code as country from zz.cities) c
+on ueta.city_id = c.id
