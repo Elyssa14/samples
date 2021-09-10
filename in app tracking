@@ -1,0 +1,41 @@
+### query to get user's booking estimated time of arrival (eta) dist , PrestoSQL  ###
+select booking_code, upfront_eta, upfront_eta_low, upfront_eta_max, first_eta_s,
+  case when round(upfront_eta/60.0,0) >= upfront_eta_low and round(upfront_eta/60.0,0) <= upfront_eta_max then 1 else 0 end as uf_range_correct,
+  upfront_lat,  upfront_long, pax_geohash,
+  passenger_id,
+  c.city, 
+  c.country, 
+  taxi.taxi_type as vertical, 
+  hour, 
+  ts_pretty as time_utc,
+  concat(year, '-', month, '-', day) as day  
+  from(
+  
+select * from(
+select ts_pretty, properties['bookingCode'] as booking_code,
+cast(properties['lastUpfront_ETAInsecond'] as bigint) as upfront_eta,
+cast(properties['lastUpfront_resultLow'] as bigint) as upfront_eta_low,
+cast(properties['lastUpfront_resultMax'] as bigint) as upfront_eta_max,
+cast(split(properties['lastUpfront_PickupPoint'],',')[1] as double) as upfront_lat, 
+cast(split(properties['lastUpfront_PickupPoint'],',')[2] as double) as upfront_long,
+ properties['lastUpfront_PassengerGeohash'] as pax_geohash, properties['lastUpfront_Func'] as function,
+cast(properties['lastUpfront_VehicleID'] as bigint) as vehicle_used_id,
+cast(split(split(split(properties['firstDisplayETA'],'ETAResponse total:{')[2],'}')[1],' ')[1] as bigint) as first_eta_s,
+cast(split(split(split(properties['firstDisplayETA'],'ETAResponse total:{')[2],'}')[1],' ')[2] as double) as first_distance_m,
+cast(split(split(properties['firstDisplayETA'],'UTCCityID:')[2],'VehicleID:')[1] as bigint) as city_id,
+properties['lastUpfront_PaxID'] as passenger_id,
+dense_rank() over (partition by properties['bookingCode'] order by ts_pretty) as rank,
+hour, year, month , day
+from xx.raw_logs_hourly where service = 'chronos'
+and concat(year, '-', month, '-', day) >= [[inc_start_date]]
+and concat(year, '-', month, '-', day) < [[inc_end_date]]
+and element_at(properties, 'lastUpfront_ETAInsecond') is not null
+and element_at(properties, 'lastUpfront_PickupPoint') is not null
+and properties['operation.name'] = 'upfront_eta') t1
+where rank = 1) ueta
+
+ inner join (select id, taxi_type_simple as taxi_type from public.taxi_types_v where end_at = '2100-01-01 00:00:00') taxi
+  on ueta.vehicle_used_id = taxi.id
+
+  inner join (select id, name as city, country_code as country from public.cities) c
+  on ueta.city_id = c.id
