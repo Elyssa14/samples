@@ -1,0 +1,77 @@
+### user funnel data prep ###
+### some code to get a consolidated view of product X event trackin from logs , prestoSQL , table name masked ###
+
+SELECT
+A.partner_id,
+A.partner_name,
+B.trading_name as mex_name,
+A.event,
+A.currency,
+A.transaction_id,
+C.trx_type,
+is_recurring,
+is_successful,
+A.pax,
+A.ingestion_date
+FROM
+( 
+/* Getting all events */
+select
+json_extract_scalar(CAST(data AS JSON), '$.partner') AS partner_id,
+json_extract_scalar(CAST(data AS JSON), '$.currency') AS currency,
+p.name as partner_name,
+event,
+date(cast(ingestion_year as varchar)||'-'||cast(ingestion_month as varchar)||'-'||cast(ingestion_day as varchar)) as ingestion_date,
+json_extract_scalar(CAST(data AS JSON), '$.transaction_id') AS transaction_id,
+json_extract_scalar(CAST(data AS JSON), '$.is_recurring') as is_recurring,
+json_extract_scalar(CAST(data AS JSON), '$.is_successful') as is_successful,
+pax
+from grab_x.eventlog_daily m
+left join xx.partner_app p on (p.app_safe_id=case when json_extract_scalar(CAST(data AS JSON), '$.partner')='AA' then 'zzxxxxxxxxccccvvvbb' else json_extract_scalar(CAST(data AS JSON), '$.partner') end)
+where scope in ('aaaaaaa-web','aaaaaaa-agent')
+group by 1,2,3,4,5,6,7,8,9
+)A
+
+left join
+
+(
+/* Getting Mex Name */
+select date(cast(ingestion_year as varchar)||'-'||cast(ingestion_month as varchar)||'-'||cast(ingestion_day as varchar)) as ingestion_date,
+json_extract_scalar(CAST(data AS JSON), '$.transaction_id') AS transaction_id,
+mex,
+trading_name
+from grab_x.eventlog_daily p
+left join YY.mlm_stores s on s.grab_id = p.mex
+where  scope in ('qq','ww')
+and event in ('QWE')
+group by 1,2,3,4
+)
+B
+ON A.ingestion_date = B.ingestion_date and B.transaction_id = A.transaction_id
+
+left join
+(
+/* Getting insufficient TXN Mapping */
+-- a proxy , not 100% 
+select
+ingestion_date,transaction_id,case when is_insufficient = 0 and is_top_up = 0 then 'sufficient_balance'
+when is_insufficient = 0 and is_top_up = 1 then 'insufficient_top_up'
+when is_insufficient = 1 and is_top_up = 0 then 'insufficient_no_top_up' end as trx_type
+from(
+select ingestion_date,transaction_id, min(is_insufficient) as is_insufficient, CASE WHEN min(is_insufficient) <> max(is_insufficient) then 1 else 0 end as is_top_up
+from (
+select
+case when coalesce(CAST(json_extract_scalar(CAST(data AS JSON), '$.pax_balance') AS DOUBLE),0) < coalesce(CAST(json_extract_scalar(CAST(data AS JSON), '$.val') AS DOUBLE),0) then 1 else 0 END as is_insufficient,
+json_extract_scalar(CAST(data AS JSON), '$.partner') AS partner_id,json_extract_scalar(CAST(data AS JSON), '$.currency') AS currency, event, date(cast(ingestion_year as varchar)||'-'||cast(ingestion_month as varchar)||'-'||cast(ingestion_day as varchar)) as ingestion_date, json_extract_scalar(CAST(data AS JSON), '$.transaction_id') AS transaction_id
+from grab_x.eventlog_daily m
+where scope in ('aaaaaaaa-web','aaaaaaaa-agent')
+AND date(cast(ingestion_year as varchar)||'-'||cast(ingestion_month as varchar)||'-'||cast(ingestion_day as varchar)) >= date('2021-06-01')
+and event = 'aaaa-web.xyzxcv_details'
+)
+group by 1,2
+)
+
+
+)
+C on A.ingestion_date = C.ingestion_date and C.transaction_id = A.transaction_id
+where B.mex is not null
