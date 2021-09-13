@@ -1,4 +1,4 @@
-# samples
+# sample code
 
 Please use for review only, mask certain variable/table name to desensitize data/table
 
