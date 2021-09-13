@@ -1,0 +1,139 @@
+#### User funnel tracking, include session level data process at the front and table level manipulation at bottom ####
+### certain param are masked and skipped ###
+
+select 
+ dax,
+ sid as sessionid,
+ avn,
+ case when ost in ('Android', 'android') then 'ADR'
+  when ost in ('ios','IOS') then 'IOS'
+  else ost end as Mobile,
+ cities.name as city,
+ countries.name as country,
+ case when b.driver_id is not null then 1 else 0 end as whitelist,
+ b.program_id,
+ d.country_code,
+------/ below includes certain format to extract data from inhouse data tracking tool/---------
+
+  max(case when upper(try(data['STATE_NAME'])) = 'WALLET' and upper(substr(event,20)) in ('IAD_IMP','IAD_CLICK') then 1 else 0 end) as S0_EP_IMP
+ , max(case when upper(try(data['STATE_NAME'])) = 'WALLET' and upper(substr(event,20)) = 'IAD_CLICK' then 1 else 0 end) as S0_EP_CLICK
+ , max(case when upper(try(data['STATE_NAME'])) = 'WALLET' and upper(substr(event,20)) in ('IAD_IMP','IAD_CLICK') and (try(data['PARAM_1'])     like '%!%' or  length(upper(try(data['PARAM_1'])))= 17) then 1 else 0 end) as S0_EP_IMP_GETLOAN
+ , max(case when upper(try(data['STATE_NAME'])) = 'WALLET' and upper(substr(event,20)) in ('IAD_IMP','IAD_CLICK') and (try(data['PARAM_1']) not like '%!%' and length(upper(try(data['PARAM_1'])))<>17) then 1 else 0 end) as S0_EP_IMP_VIEWLOAN
+----- skip the following 20 lines for similar pattern ------
+
+ , max(case when upper(try(data['STATE_NAME'])) = 'IAD_INTRO' then 1 else 0 end) as S1_INTRO
+ , max(case when upper(try(data['STATE_NAME'])) = 'IAD_INTRO' and upper(substr(event,20)) = 'DEFAULT' then 1 else 0 end) as S1_INTRO_DEFAULT
+ , arbitrary(case when upper(try(data['STATE_NAME'])) = 'IAD_INTRO' and upper(substr(event,20)) = 'DEFAULT' then coalesce(upper(try(data['PARAM_1'])),upper(try(data['EVENT_PARAMETER_1']))) else null end) as S1_INTRO_MAX
+ , sum(case when upper(try(data['STATE_NAME'])) = 'IAD_INTRO' and upper(substr(event,20)) in ('NEXT', 'BACK', 'DETAILS', 'ERROR_RETRY') then 1 else 0 end) as S1_INTRO_CLICKS
+ , sum(case when upper(try(data['STATE_NAME'])) = 'IAD_INTRO' and upper(substr(event,20)) = 'BACK' then 1 else 0 end) as S1_INTRO_BACKCLICKS
+----- skip the following 17 lines for similar pattern ------
+
+ , max(case when upper(try(data['STATE_NAME'])) = 'IAD_AMOUNT' then 1 else 0 end) as S2_AMOUNT
+ , max(case when upper(try(data['STATE_NAME'])) = 'IAD_AMOUNT' and
+upper(substr(substr(event,20)) = 'DEFAULT' then 1 else 0 end) as S2_AMOUNT_DEFAULT
+ , max(case when upper(try(data['STATE_NAME'])) = 'IAD_AMOUNT' and upper(substr(event,20)) = 'AMOUNT' then 1 else 0 end) as S2_AMOUNT_TRYTOKEY
+ , arbitrary(case when upper(try(data['STATE_NAME'])) = 'IAD_AMOUNT' and upper(substr(event,20)) = 'NEXT' then coalesce(upper(try(data['PARAM_1'])),upper(try(data['EVENT_PARAMETER_1']))) else null end) as S2_AMOUNT_CURRENCY
+ , sum(case when upper(try(data['STATE_NAME'])) = 'IAD_AMOUNT' and upper(substr(event,20)) in ('NEXT', 'BACK', 'ERROR_RETRY') then 1 else 0 end) as S2_AMOUNT_CLICKS
+
+----- skip the following lines for S3-S7,  similar pattern but different pages and clickes  ------
+------- funnel start point ------
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_INTRO'     and upper(substr(event,20)) = 'DEFAULT' then from_unixtime(tsi/pow(10,9)) else null end) as S1_INTRO_START
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_AMOUNT'    and upper(substr(event,20)) = 'DEFAULT' then from_unixtime(tsi/pow(10,9)) else null end) as S2_AMOUNT_START
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_DEDUCTION' and upper(substr(event,20)) = 'DEFAULT' then from_unixtime(tsi/pow(10,9)) else null end) AS S3_DEDUCT_START
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_DETAILS'   and upper(substr(event,20)) = 'DEFAULT' then from_unixtime(tsi/pow(10,9)) else null end) AS S4_DETAIL_START
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_PERSONAL'  and upper(substr(event,20)) = 'DEFAULT' then from_unixtime(tsi/pow(10,9)) else null end) AS S5_PERSONAL_DETAIL_START
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_CONSENT'   and upper(substr(event,20)) = 'DEFAULT' then from_unixtime(tsi/pow(10,9)) else null end) AS S6_CONSENT_START
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_TNC'       and upper(substr(event,20)) = 'DEFAULT' then from_unixtime(tsi/pow(10,9)) else null end) AS S7_TNC_START
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_OUTCOME'   and upper(substr(event,20)) = 'DEFAULT' then from_unixtime(tsi/pow(10,9)) else null end) AS S8_APPLICATION_START
+------- funnel end point-----
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_INTRO'     and upper(substr(event,20)) in ('NEXT', 'BACK', 'DETAILS', 'ERROR_RETRY', 'ERROR') then from_unixtime(tsi/pow(10,9)) else null end) as S1_INTRO_END
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_AMOUNT'    and upper(substr(event,20)) in ('NEXT', 'BACK', 'ERROR_RETRY', 'ERROR') then from_unixtime(tsi/pow(10,9)) else null end) as S2_AMOUNT_END
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_DEDUCTION' and upper(substr(event,20)) in ('NEXT', 'BACK', 'ERROR_RETRY', 'ERROR') then from_unixtime(tsi/pow(10,9)) else null end) as S3_DEDUCT_END  
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_DETAILS'   and upper(substr(event,20)) in ('NEXT', 'BACK', 'ERROR_RETRY', 'ERROR') then from_unixtime(tsi/pow(10,9)) else null end) as S4_DETAIL_END
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_PERSONAL'  and upper(substr(event,20)) in ('NEXT', 'BACK') then from_unixtime(tsi/pow(10,9)) else null end) as S5_PERSONAL_DETAIL_END
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_CONSENT'   and upper(substr(event,20)) in ('NEXT', 'BACK', 'CANCEL') then from_unixtime(tsi/pow(10,9)) else null end) as S6_CONSENT_END
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_TNC'       and upper(substr(event,20)) in ('NEXT', 'BACK', 'ERROR_RETRY', 'ERROR') then from_unixtime(tsi/pow(10,9)) else null end) as S7_TNC_END
+ , min(case when upper(try(data['STATE_NAME'])) = 'IAD_OUTCOME'   and upper(substr(event,20)) ='NEXT' then from_unixtime(tsi/pow(10,9)) else null end) as S8_APPLICATION_END
+
+ , ingestion_date
+
+from 
+ xxxxxx.eventlog a 
+ -------- join on other table ---
+left join 
+ (
+ select 
+  id,
+  name,
+  country_code,
+   time_zone 
+ from 
+  p.cities
+ ) cities on cast(city as int) = cities.id
+left join 
+ p.countries on cities.country_code = countries.code 
+left join 
+ (
+ select 
+  distinct a.program_id,
+  a.active,
+  b.driver_id,
+  c.validity_start as whitelist_start,
+  c.validity_end as whitelist_end
+ from 
+  qqqqqqqq.whitelist_config a
+ left join 
+  (
+  select a.safe_id,
+   b.service_user_id as driver_id
+  from 
+   xxxx.users a
+  inner join 
+  xxxx.services b on a.id = b.user_id
+  where service_id='DRIVER'
+  ) as b on a.grab_id=b.safe_id
+ left join 
+  cccccc.program_configuration c on a.program_id=c.program_id
+ left join 
+  (
+  select 
+   program_id
+  from 
+  qqqqqqqq.flow_manager
+  where 
+   flow_id in ('flow:JczTYIFboz')
+   and program_id not like ('%SNPL%')
+   and program_id not like ('%TEST%')
+  ) d on a.program_id = d.program_id
+ left join
+  (select 
+   distinct program_id 
+  from 
+   qwe.cy_iad_jun2019_whitelist
+  ) e on a.program_id = e.program_id
+ where 
+  a.active = 1 
+  and a.validity_end is null 
+  and d.program_id is not null
+  and e.program_id is null
+  and (a.program_id like '%IAD%' or a.program_id like '%GNL%')
+  and a.program_id like 'TH-%'
+ ) b on a.dax=b.driver_id and a.ingestion_date between b.whitelist_start and b.whitelist_end
+left join p.drivers_v2 d on a.dax = d.id
+where 
+ ingestion_date >= date([[inc_start_date]])
+ and ingestion_date <= date([[inc_end_date]])
+  and scope like 'x.track.z' 
+  and d.country_code in ('T')
+ and ( 
+   (
+   upper(try(data['STATE_NAME'])) = 'WALLET' 
+   and upper(substr(event,20)) in ('IAD_IMP', 'IAD_CLICK')
+   )
+    or 
+   (
+   upper(try(data['STATE_NAME'])) in ('IAD_INTRO', 'IAD_AMOUNT', 'IAD_DEDUCTION', 'IAD_DETAILS', 'IAD_TNC', 'IAD_OUTCOME','IAD_PERSONAL','IAD_CONSENT')
+   )
+  )
+   
+group by 1,2,3,4,5,6,7,8,9,ingestion_date
