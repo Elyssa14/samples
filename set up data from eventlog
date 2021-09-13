@@ -1,4 +1,4 @@
-### user funnel data prep ###
+### user funnel data prep , self serve ETL ###
 ### some code to get a consolidated view of product X event trackin from logs , prestoSQL , table name masked ###
 
 SELECT
