@@ -1,0 +1,19 @@
+### getting active user info to prepare profile matching from external data###
+### desensitive data ###
+
+with fb as (select cast  (se.service_user_id as int) as passenger_id,
+ 1 as fb_verified
+ from AAA.BBBB fb 
+ inner join xxxx.yy se ON fb.user_id = se.user_id and se.service_id='PASSENGER'
+ where facebook_user_id is not null
+ )   
+ 
+select case when fb_verified = 1 then 'has fb' else 'no fb' end as fb_verified
+, count(distinct bk.passenger_id) as num_pax
+from datamart.agg_passenger_bookings bk
+inner join core.cities c on c.id = bk.city_id
+left join fb on fb.passenger_id = bk.passenger_id
+where bk.date_local between '2021-02-01' and '2021-08-31'
+and bk.rides > 0 
+and c.country_code in ('PHP','SGD','VND','MYR')
+group  by 1
